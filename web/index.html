@@ -5,13 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>A* 8-puzzle</title>
 <link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="app.js" defer></script>
 </head>
 <body>
-<header>
-  <h1>A* no quebra-cabeça de 8 peças</h1>
+<header class="top">
+  <div>
+    <h1>Peças fora do lugar × Manhattan</h1>
+    <p class="kicker">A* no quebra-cabeça de 8 peças</p>
+  </div>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-tab="interactive">Interativo</button>
     <button role="tab" aria-selected="false" data-tab="experiment">Experimento</button>
@@ -20,47 +26,62 @@
 
 <main>
   <section id="interactive">
-    <div class="controls">
-      <div>
-        <div id="editor" class="board" aria-label="Estado inicial"></div>
-        <p class="hint">Clique numa peça vizinha ao vazio para movê-la.</p>
-      </div>
-      <div class="actions">
-        <label>Estado <input id="state-input" spellcheck="false" placeholder="1 2 3 4 5 6 7 8 0"></label>
-        <label>Embaralhar
-          <select id="shuffle-steps">
-            <option value="10">10 movimentos</option>
-            <option value="20" selected>20 movimentos</option>
-            <option value="60">60 movimentos</option>
-          </select>
-        </label>
-        <div class="row">
-          <button id="shuffle">Embaralhar</button>
-          <button id="solve" class="primary">Resolver</button>
+    <p id="verdict" class="verdict">Escolha um estado e resolva com as três heurísticas.</p>
+
+    <div class="layout">
+      <aside class="setup">
+        <div id="editor" class="board" aria-label="Estado inicial. Clique numa peça vizinha ao vazio para movê-la."></div>
+
+        <div class="field">
+          <label for="state-input">Estado</label>
+          <input id="state-input" spellcheck="false" autocomplete="off">
+          <p id="status" class="field-msg" role="status"></p>
         </div>
-        <p id="status" role="status"></p>
+
+        <div class="field">
+          <label for="shuffle-steps">Movimentos aleatórios</label>
+          <div class="inline">
+            <select id="shuffle-steps">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="60">60</option>
+            </select>
+            <button id="shuffle" type="button">Embaralhar</button>
+          </div>
+        </div>
+
+        <button id="solve" type="button" class="primary">Resolver</button>
+      </aside>
+
+      <div class="compare">
+        <div id="columns" class="columns"></div>
+
+        <div class="player" id="player">
+          <button id="prev" type="button" class="icon" aria-label="Passo anterior" disabled>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg>
+          </button>
+          <button id="play" type="button" class="icon" aria-label="Reproduzir" disabled>
+            <svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg>
+            <svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5v9M10.5 3.5v9"/></svg>
+          </button>
+          <button id="next" type="button" class="icon" aria-label="Próximo passo" disabled>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg>
+          </button>
+          <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Passo da solução" disabled>
+          <span id="step-label" class="num">0 / 0</span>
+        </div>
       </div>
     </div>
-
-    <div id="player" class="player" hidden>
-      <button id="prev" aria-label="Passo anterior">◀</button>
-      <button id="play">▶ Play</button>
-      <button id="next" aria-label="Próximo passo">▶</button>
-      <input id="scrub" type="range" min="0" value="0" aria-label="Passo">
-      <span id="step-label"></span>
-    </div>
-
-    <div id="panels" class="panels"></div>
   </section>
 
   <section id="experiment" hidden>
-    <p id="exp-status"></p>
-    <figure>
-      <figcaption>Nós expandidos (média por balde) × profundidade ótima d — escala log</figcaption>
-      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    <p id="exp-verdict" class="verdict">Carregando experimento…</p>
+    <figure class="chart">
+      <figcaption>Nós expandidos, média por profundidade ótima d. Escala logarítmica.</figcaption>
+      <div class="chart-wrap"><canvas id="chart" role="img" aria-label="Nós expandidos por profundidade para h0, h1 e h2"></canvas></div>
     </figure>
     <div class="table-wrap"><table id="exp-table"></table></div>
-    <p id="exp-meta" class="hint"></p>
+    <p id="exp-meta" class="note"></p>
   </section>
 </main>
 </body>

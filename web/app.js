@@ -1,8 +1,8 @@
 const GOAL = [1, 2, 3, 4, 5, 6, 7, 8, 0];
 const HS = [
-  { id: "h0", name: "h0 = 0", sub: "Dijkstra / UCS (baseline)" },
-  { id: "h1", name: "h1", sub: "Peças fora do lugar" },
-  { id: "h2", name: "h2", sub: "Distância de Manhattan" },
+  { id: "h0", name: "h0", sub: "sem heurística" },
+  { id: "h1", name: "h1", sub: "peças fora do lugar" },
+  { id: "h2", name: "h2", sub: "Manhattan" },
 ];
 const $ = (id) => document.getElementById(id);
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -31,9 +31,7 @@ function shuffle(steps) {
   }
   return s;
 }
-function isValid(s) {
-  return s.length === 9 && [...s].sort((a, b) => a - b).every((x, i) => x === i);
-}
+const isValid = (s) => s.length === 9 && [...s].sort((a, b) => a - b).every((x, i) => x === i);
 function isSolvable(s) {
   const t = s.filter((x) => x);
   let inv = 0;
@@ -41,18 +39,27 @@ function isSolvable(s) {
   return inv % 2 === 0;
 }
 
+// Tiles persist per board and move via transform, so steps slide instead of redraw.
 function renderBoard(el, s, onClick) {
-  el.replaceChildren(...s.map((x, i) => {
-    const b = document.createElement(onClick ? "button" : "div");
-    b.className = "cell" + (x ? "" : " blank");
-    b.textContent = x || "";
-    if (onClick) {
-      b.type = "button";
-      b.setAttribute("aria-label", x ? `Peça ${x}` : "Vazio");
-      b.onclick = () => onClick(i);
+  if (!el.children.length) {
+    for (let x = 1; x <= 8; x++) {
+      const t = document.createElement(onClick ? "button" : "div");
+      t.className = "tile";
+      t.textContent = x;
+      t.dataset.tile = x;
+      if (onClick) {
+        t.type = "button";
+        t.onclick = () => onClick(x);
+      }
+      el.append(t);
     }
-    return b;
-  }));
+  }
+  for (const t of el.children) {
+    const i = s.indexOf(+t.dataset.tile);
+    t.style.setProperty("--r", Math.floor(i / 3));
+    t.style.setProperty("--c", i % 3);
+    if (onClick) t.setAttribute("aria-label", `Peça ${t.dataset.tile}, linha ${Math.floor(i / 3) + 1}, coluna ${(i % 3) + 1}`);
+  }
 }
 
 // ---------- tabs ----------
@@ -72,34 +79,72 @@ let results = null, step = 0, timer = null;
 function setState(s) {
   state = s;
   $("state-input").value = s.join(" ");
-  renderBoard($("editor"), s, (i) => {
-    const b = state.indexOf(0), [r, c, br, bc] = [Math.floor(i / 3), i % 3, Math.floor(b / 3), b % 3];
-    if (Math.abs(r - br) + Math.abs(c - bc) !== 1) return;
+  $("state-input").removeAttribute("aria-invalid");
+  $("status").textContent = "";
+  renderBoard($("editor"), s, (tile) => {
+    const i = state.indexOf(tile), b = state.indexOf(0);
+    if (Math.abs(Math.floor(i / 3) - Math.floor(b / 3)) + Math.abs((i % 3) - (b % 3)) !== 1) return;
     const t = state.slice();
     [t[i], t[b]] = [t[b], t[i]];
     setState(t);
   });
+  if (results) clearResults();
 }
 
+function inputError(msg) {
+  $("state-input").setAttribute("aria-invalid", "true");
+  $("status").textContent = msg;
+}
 $("state-input").onchange = () => {
   const s = $("state-input").value.trim().split(/[\s,]+/).map(Number);
-  if (!isValid(s)) return status("Estado precisa ser uma permutação de 0..8.", true);
-  if (!isSolvable(s)) return status("Estado insolúvel (paridade de inversões ímpar).", true);
-  status("");
+  if (!isValid(s)) return inputError("Use os números 0 a 8, uma vez cada.");
+  if (!isSolvable(s)) return inputError("Insolúvel: número ímpar de inversões.");
   setState(s);
 };
-$("shuffle").onclick = () => { status(""); setState(shuffle(+$("shuffle-steps").value)); };
+$("shuffle").onclick = () => setState(shuffle(+$("shuffle-steps").value));
 $("solve").onclick = solve;
 
-function status(msg, err = false) {
-  $("status").textContent = msg;
-  $("status").classList.toggle("error", err);
+function renderColumns() {
+  $("columns").replaceChildren(...HS.map((h) => {
+    const col = document.createElement("article");
+    col.className = "col";
+    col.style.setProperty("--color", `var(--${h.id})`);
+    col.innerHTML = `
+      <div class="col-name"><i class="swatch"></i><b>${h.name}</b><span>${h.sub}</span></div>
+      <div class="expanded">
+        <span class="value">—</span>
+        <div class="bar"><i></i></div>
+        <span class="label">nós expandidos</span>
+      </div>
+      <div class="board small"></div>
+      <dl>
+        <dt>gerados</dt><dd data-k="generated">—</dd>
+        <dt>fronteira máx.</dt><dd data-k="max_frontier">—</dd>
+        <dt>b*</dt><dd data-k="bstar">—</dd>
+        <dt>custo</dt><dd data-k="cost">—</dd>
+        <dt>tempo</dt><dd data-k="time_ms">—</dd>
+      </dl>`;
+    renderBoard(col.querySelector(".board"), state);
+    return col;
+  }));
+}
+
+function clearResults() {
+  stop();
+  results = null;
+  step = 0;
+  renderColumns();
+  setPlayer(false);
+  $("verdict").textContent = "Resolva para comparar as três heurísticas neste estado.";
 }
 
 async function solve() {
   stop();
-  $("solve").disabled = true;
-  status("Resolvendo com h0, h1 e h2…");
+  const btn = $("solve");
+  btn.disabled = true;
+  btn.setAttribute("aria-busy", "true");
+  btn.textContent = "Resolvendo…";
+  document.querySelectorAll(".col").forEach((c) => c.setAttribute("aria-busy", "true"));
   try {
     results = await Promise.all(HS.map(async (h) => {
       const r = await fetch("/api/solve", {
@@ -110,51 +155,51 @@ async function solve() {
       if (!r.ok) throw new Error((await r.json()).detail ?? r.statusText);
       return r.json();
     }));
-    status("");
     step = 0;
-    renderPanels();
+    showResults();
   } catch (e) {
-    status(`Erro: ${e.message}`, true);
+    inputError(`Erro do servidor: ${e.message}`);
   } finally {
-    $("solve").disabled = false;
+    btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    btn.textContent = "Resolver";
+    document.querySelectorAll(".col").forEach((c) => c.removeAttribute("aria-busy"));
   }
 }
 
-function renderPanels() {
-  const best = Math.min(...results.map((r) => r.metrics.expanded));
-  const base = results[0].metrics.expanded;
-  $("panels").replaceChildren(...HS.map((h, k) => {
+function showResults() {
+  const exp = results.map((r) => r.metrics.expanded);
+  const max = Math.max(...exp), min = Math.min(...exp);
+  const cost = results[0].metrics.cost;
+  document.querySelectorAll(".col").forEach((col, k) => {
     const m = results[k].metrics;
-    const p = document.createElement("article");
-    p.className = "panel" + (m.expanded === best ? " winner" : "");
-    p.style.setProperty("--color", `var(--${h.id})`);
-    p.innerHTML = `
-      <header>
-        <h2>${h.name}${m.expanded === best ? '<span class="badge">menos expansões</span>' : ""}</h2>
-        <div class="sub">${h.sub}</div>
-      </header>
-      <div class="board small"></div>
-      <dl>
-        <dt>Expandidos</dt><dd class="big">${fmt(m.expanded)}</dd>
-        <dt>vs h0</dt><dd>${k === 0 ? "—" : `${fmt(base / m.expanded, 1)}× menos`}</dd>
-        <dt>Gerados</dt><dd>${fmt(m.generated)}</dd>
-        <dt>Fronteira máx.</dt><dd>${fmt(m.max_frontier)}</dd>
-        <dt>b*</dt><dd>${fmt(m.bstar, 3)}</dd>
-        <dt>Custo</dt><dd>${m.cost}</dd>
-        <dt>Tempo</dt><dd>${fmt(m.time_ms, 1)} ms</dd>
-      </dl>`;
-    return p;
-  }));
-  $("player").hidden = false;
-  $("scrub").max = results[0].metrics.cost;
+    col.classList.toggle("best", m.expanded === min);
+    col.querySelector(".value").textContent = fmt(m.expanded);
+    col.querySelector(".bar i").style.setProperty("--w", `${(m.expanded / max) * 100}%`);
+    for (const dd of col.querySelectorAll("dd")) {
+      const k2 = dd.dataset.k, v = m[k2];
+      dd.textContent = k2 === "bstar" ? fmt(v, 3) : k2 === "time_ms" ? `${fmt(v, 1)} ms` : fmt(v);
+    }
+  });
+  $("verdict").innerHTML = cost === 0
+    ? "Já está resolvido."
+    : `Mesmo custo ótimo nas três: <strong>${cost} movimentos</strong>. Manhattan expandiu ` +
+      `<strong>${fmt(exp[0] / exp[2], 1)}×</strong> menos nós que h0 e ` +
+      `<strong>${fmt(exp[1] / exp[2], 1)}×</strong> menos que peças fora do lugar.`;
+  setPlayer(cost > 0);
+  $("scrub").max = cost;
   showStep();
 }
 
+function setPlayer(on) {
+  for (const id of ["prev", "play", "next", "scrub"]) $(id).disabled = !on;
+  if (!on) $("step-label").textContent = "0 / 0";
+}
 function showStep() {
   const cost = results[0].metrics.cost;
-  document.querySelectorAll(".panel .board").forEach((el, k) => renderBoard(el, results[k].path[step]));
+  document.querySelectorAll(".col .board").forEach((el, k) => renderBoard(el, results[k].path[step]));
   $("scrub").value = step;
-  $("step-label").textContent = `passo ${step}/${cost}`;
+  $("step-label").textContent = `${step} / ${cost}`;
 }
 function go(n) {
   step = Math.max(0, Math.min(results[0].metrics.cost, n));
@@ -163,7 +208,8 @@ function go(n) {
 function stop() {
   clearInterval(timer);
   timer = null;
-  $("play").textContent = "▶ Play";
+  $("play").setAttribute("aria-pressed", "false");
+  $("play").setAttribute("aria-label", "Reproduzir");
 }
 $("prev").onclick = () => { stop(); go(step - 1); };
 $("next").onclick = () => { stop(); go(step + 1); };
@@ -171,14 +217,17 @@ $("scrub").oninput = () => { stop(); go(+$("scrub").value); };
 $("play").onclick = () => {
   if (timer) return stop();
   if (step >= results[0].metrics.cost) go(0);
-  $("play").textContent = "❚❚ Pausar";
+  $("play").setAttribute("aria-pressed", "true");
+  $("play").setAttribute("aria-label", "Pausar");
   timer = setInterval(() => {
     go(step + 1);
     if (step >= results[0].metrics.cost) stop();
-  }, 400);
+  }, 350);
 };
 
 setState(state);
+clearResults();
+$("verdict").textContent = "Escolha um estado e resolva com as três heurísticas.";
 
 // ---------- experiment ----------
 let experiment = null, chart = null;
@@ -187,52 +236,59 @@ async function loadExperiment() {
   if (experiment) return;
   const r = await fetch("/api/experiment");
   if (!r.ok) {
-    $("exp-status").textContent = "Experimento ainda não gerado: rode `python -m experiment.run`.";
+    $("exp-verdict").textContent = "Experimento ainda não gerado. Rode python -m experiment.run.";
     return;
   }
   experiment = await r.json();
+  const rows = experiment.rows, last = rows[rows.length - 1];
+  const total = rows.reduce((a, r) => a + r.n.h2, 0);
+  $("exp-verdict").innerHTML =
+    `Em d = ${last.d}, Manhattan expande <strong>${fmt(last.expanded.h2)}</strong> nós em média; ` +
+    `peças fora do lugar, <strong>${fmt(last.expanded.h1)}</strong>; sem heurística, <strong>${fmt(last.expanded.h0)}</strong>. ` +
+    `Custo ótimo idêntico nas ${fmt(total)} instâncias.`;
   renderTable();
   renderChart();
-  const m = experiment.meta;
-  $("exp-meta").textContent = `Semente ${m.seed}; até ${m.per_bucket_target} instâncias por balde (d=2, 4, 6 têm só 4, 16, 39 estados no espaço inteiro). b* com N = nós gerados (convenção AIMA).`;
+  $("exp-meta").textContent =
+    `Semente ${experiment.meta.seed}, até ${experiment.meta.per_bucket_target} instâncias por profundidade. ` +
+    `d = 2, 4 e 6 têm só 4, 16 e 39 estados no espaço inteiro. b* calculado com N = nós gerados (convenção AIMA).`;
 }
 
 function renderTable() {
-  const rows = experiment.rows;
-  const head = `
+  const sw = (h) => `<th><i class="swatch" style="--color:var(--${h.id})"></i>${h.id}</th>`;
+  const swSep = (h, i) => sw(h).replace("<th>", i === 0 ? '<th class="sep">' : "<th>");
+  $("exp-table").innerHTML = `
     <thead>
-      <tr><th rowspan="2">d</th><th rowspan="2">n</th><th colspan="3">Nós expandidos (média)</th><th colspan="3">b* (média)</th></tr>
-      <tr>${[0, 1].map(() => HS.map((h) => `<th><span class="swatch" style="--color:var(--${h.id})"></span>${h.id}</th>`).join("")).join("")}</tr>
-    </thead>`;
-  const body = rows.map((r) => `<tr>
+      <tr><th></th><th></th><th class="group" colspan="3"><span>nós expandidos (média)</span></th><th class="group" colspan="3"><span>b* (média)</span></th></tr>
+      <tr><th>d</th><th>n</th>${HS.map(swSep).join("")}${HS.map(swSep).join("")}</tr>
+    </thead>
+    <tbody>${experiment.rows.map((r) => `<tr>
       <td>${r.d}</td><td>${r.n.h2}</td>
-      ${HS.map((h) => `<td>${fmt(r.expanded[h.id])}</td>`).join("")}
-      ${HS.map((h) => `<td>${fmt(r.bstar[h.id], 2)}</td>`).join("")}
-    </tr>`).join("");
-  $("exp-table").innerHTML = head + `<tbody>${body}</tbody>`;
+      ${HS.map((h, i) => `<td${i === 0 ? ' class="sep"' : ""}>${fmt(r.expanded[h.id])}</td>`).join("")}
+      ${HS.map((h, i) => `<td${i === 0 ? ' class="sep"' : ""}>${fmt(r.bstar[h.id], 2)}</td>`).join("")}
+    </tr>`).join("")}</tbody>`;
 }
 
-// direct labels at each line's last point (identity is never color-only)
+// direct labels at each line's end (identity is never color-only)
 const endLabels = {
   id: "endLabels",
   afterDatasetsDraw(c) {
     const ctx = c.ctx;
     ctx.save();
-    ctx.font = "600 12px system-ui, sans-serif";
+    ctx.font = `500 12px ${css("--sans")}`;
     ctx.fillStyle = css("--text");
     ctx.textBaseline = "middle";
     c.data.datasets.forEach((ds, i) => {
-      const pts = c.getDatasetMeta(i).data;
-      const last = pts[pts.length - 1];
-      if (last) ctx.fillText(ds.label, last.x + 8, last.y);
+      const pts = c.getDatasetMeta(i).data, last = pts[pts.length - 1];
+      if (last) ctx.fillText(ds.label, last.x + 10, last.y);
     });
     ctx.restore();
   },
 };
 
 function renderChart() {
-  const rows = experiment.rows;
-  const text2 = css("--text-2"), grid = css("--border");
+  const rows = experiment.rows, text2 = css("--text-2"), line = css("--line");
+  Chart.defaults.font.family = css("--sans");
+  Chart.defaults.font.size = 12;
   chart?.destroy();
   chart = new Chart($("chart"), {
     type: "line",
@@ -246,26 +302,40 @@ function renderChart() {
         borderWidth: 2,
         pointRadius: 4,
         pointHoverRadius: 6,
-        pointBorderColor: css("--surface"),
+        pointBorderColor: css("--bg"),
         pointBorderWidth: 2,
       })),
     },
     options: {
       maintainAspectRatio: false,
-      layout: { padding: { right: 28 } },
+      animation: false,
+      layout: { padding: { right: 32 } },
       interaction: { mode: "index", intersect: false },
       scales: {
-        x: { title: { display: true, text: "profundidade ótima d", color: text2 }, ticks: { color: text2 }, grid: { display: false } },
+        x: {
+          title: { display: true, text: "profundidade ótima d", color: text2 },
+          ticks: { color: text2 },
+          grid: { display: false },
+          border: { color: line },
+        },
         y: {
           type: "logarithmic",
-          title: { display: true, text: "nós expandidos", color: text2 },
           ticks: { color: text2, callback: (v) => (Math.log10(v) % 1 === 0 ? fmt(v) : "") },
-          grid: { color: grid },
+          grid: { color: line },
+          border: { display: false },
         },
       },
       plugins: {
-        legend: { position: "top", align: "start", labels: { color: text2, usePointStyle: true, boxWidth: 8 } },
-        tooltip: { callbacks: { title: (it) => `d = ${it[0].label}`, label: (it) => ` ${it.dataset.label}: ${fmt(it.parsed.y)}` } },
+        legend: { position: "top", align: "end", labels: { color: text2, usePointStyle: true, pointStyle: "rectRounded", boxWidth: 8, boxHeight: 8 } },
+        tooltip: {
+          backgroundColor: css("--text"),
+          titleColor: css("--bg"),
+          bodyColor: css("--bg"),
+          bodyFont: { family: css("--mono") },
+          padding: 10,
+          cornerRadius: 6,
+          callbacks: { title: (it) => `d = ${it[0].label}`, label: (it) => ` ${it.dataset.label}  ${fmt(it.parsed.y)}` },
+        },
       },
     },
     plugins: [endLabels],
