@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A* 8-puzzle</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>A* no quebra-cabeça de 8 peças</h1>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="interactive">Interativo</button>
+    <button role="tab" aria-selected="false" data-tab="experiment">Experimento</button>
+  </nav>
+</header>
+
+<main>
+  <section id="interactive">
+    <div class="controls">
+      <div>
+        <div id="editor" class="board" aria-label="Estado inicial"></div>
+        <p class="hint">Clique numa peça vizinha ao vazio para movê-la.</p>
+      </div>
+      <div class="actions">
+        <label>Estado <input id="state-input" spellcheck="false" placeholder="1 2 3 4 5 6 7 8 0"></label>
+        <label>Embaralhar
+          <select id="shuffle-steps">
+            <option value="10">10 movimentos</option>
+            <option value="20" selected>20 movimentos</option>
+            <option value="60">60 movimentos</option>
+          </select>
+        </label>
+        <div class="row">
+          <button id="shuffle">Embaralhar</button>
+          <button id="solve" class="primary">Resolver</button>
+        </div>
+        <p id="status" role="status"></p>
+      </div>
+    </div>
+
+    <div id="player" class="player" hidden>
+      <button id="prev" aria-label="Passo anterior">◀</button>
+      <button id="play">▶ Play</button>
+      <button id="next" aria-label="Próximo passo">▶</button>
+      <input id="scrub" type="range" min="0" value="0" aria-label="Passo">
+      <span id="step-label"></span>
+    </div>
+
+    <div id="panels" class="panels"></div>
+  </section>
+
+  <section id="experiment" hidden>
+    <p id="exp-status"></p>
+    <figure>
+      <figcaption>Nós expandidos (média por balde) × profundidade ótima d — escala log</figcaption>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    </figure>
+    <div class="table-wrap"><table id="exp-table"></table></div>
+    <p id="exp-meta" class="hint"></p>
+  </section>
+</main>
+</body>
+</html>
