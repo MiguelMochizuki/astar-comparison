@@ -1,3 +1,5 @@
+"""API: solve responses, 422 on invalid input, 404 without experiment, static index."""
+
 import pytest
 from fastapi.testclient import TestClient
 

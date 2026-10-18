@@ -1,14 +1,39 @@
+/**
+ * @file Front end: interactive h0/h1/h2 comparison on one state, and the
+ * precomputed batch experiment (table + log-scale chart).
+ */
+
 const GOAL = [1, 2, 3, 4, 5, 6, 7, 8, 0];
 const HS = [
   { id: "h0", name: "h0", sub: "sem heurística" },
   { id: "h1", name: "h1", sub: "peças fora do lugar" },
   { id: "h2", name: "h2", sub: "Manhattan" },
 ];
+/**
+ * @param {string} id Element id.
+ * @returns {HTMLElement} The element.
+ */
 const $ = (id) => document.getElementById(id);
+/**
+ * Read a CSS custom property from :root (follows the active light/dark theme).
+ * @param {string} v Property name, e.g. "--h0".
+ * @returns {string} Trimmed value.
+ */
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+/**
+ * Format a number in pt-BR.
+ * @param {?number} x Value; null or undefined renders as an em dash.
+ * @param {number} [d=0] Fixed decimal places.
+ * @returns {string} Formatted text.
+ */
 const fmt = (x, d = 0) => (x == null ? "—" : x.toLocaleString("pt-BR", { maximumFractionDigits: d, minimumFractionDigits: d }));
 
 // ---------- puzzle helpers ----------
+/**
+ * States reachable in one blank move.
+ * @param {number[]} s State, 9 positions row-major, 0 = blank.
+ * @returns {number[][]} Next states.
+ */
 function neighbors(s) {
   const i = s.indexOf(0), r = Math.floor(i / 3), c = i % 3, out = [];
   for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
@@ -21,8 +46,12 @@ function neighbors(s) {
   }
   return out;
 }
+/**
+ * Random walk from the goal without undoing the previous move, so the result is always solvable.
+ * @param {number} steps Number of moves.
+ * @returns {number[]} State.
+ */
 function shuffle(steps) {
-  // random walk from the goal: always solvable
   let s = GOAL.slice(), prev = null;
   for (let k = 0; k < steps; k++) {
     const opts = neighbors(s).filter((t) => !prev || t.join() !== prev.join());
@@ -31,7 +60,16 @@ function shuffle(steps) {
   }
   return s;
 }
+/**
+ * @param {number[]} s Candidate state.
+ * @returns {boolean} True if s is a permutation of 0..8.
+ */
 const isValid = (s) => s.length === 9 && [...s].sort((a, b) => a - b).every((x, i) => x === i);
+/**
+ * 3x3 parity rule: solvable iff the inversion count, ignoring the blank, is even.
+ * @param {number[]} s Valid state.
+ * @returns {boolean} True if solvable.
+ */
 function isSolvable(s) {
   const t = s.filter((x) => x);
   let inv = 0;
@@ -39,7 +77,13 @@ function isSolvable(s) {
   return inv % 2 === 0;
 }
 
-// Tiles persist per board and move via transform, so steps slide instead of redraw.
+/**
+ * Draw a state. Tiles are created once per board and positioned via transform,
+ * so later calls slide them instead of redrawing.
+ * @param {HTMLElement} el Board container.
+ * @param {number[]} s State to show.
+ * @param {(tile: number) => void} [onClick] Makes tiles buttons; called with the tile number.
+ */
 function renderBoard(el, s, onClick) {
   if (!el.children.length) {
     for (let x = 1; x <= 8; x++) {
@@ -76,6 +120,10 @@ document.querySelectorAll("nav button").forEach((b) => {
 let state = shuffle(20);
 let results = null, step = 0, timer = null;
 
+/**
+ * Replace the start state, sync the editor and input, and discard stale results.
+ * @param {number[]} s Valid, solvable state.
+ */
 function setState(s) {
   state = s;
   $("state-input").value = s.join(" ");
@@ -91,6 +139,10 @@ function setState(s) {
   if (results) clearResults();
 }
 
+/**
+ * Show an inline error under the state input.
+ * @param {string} msg Message.
+ */
 function inputError(msg) {
   $("state-input").setAttribute("aria-invalid", "true");
   $("status").textContent = msg;
@@ -104,6 +156,7 @@ $("state-input").onchange = () => {
 $("shuffle").onclick = () => setState(shuffle(+$("shuffle-steps").value));
 $("solve").onclick = solve;
 
+/** Build the three empty heuristic columns, boards showing the current start state. */
 function renderColumns() {
   $("columns").replaceChildren(...HS.map((h) => {
     const col = document.createElement("article");
@@ -129,6 +182,7 @@ function renderColumns() {
   }));
 }
 
+/** Reset to the pre-solve state: empty columns, player disabled, prompt verdict. */
 function clearResults() {
   stop();
   results = null;
@@ -138,6 +192,10 @@ function clearResults() {
   $("verdict").textContent = "Resolva para comparar as três heurísticas neste estado.";
 }
 
+/**
+ * Solve the current state with h0, h1 and h2 in parallel and show the results.
+ * @returns {Promise<void>}
+ */
 async function solve() {
   stop();
   const btn = $("solve");
@@ -167,6 +225,7 @@ async function solve() {
   }
 }
 
+/** Fill the columns and the verdict from `results`, and enable the player. */
 function showResults() {
   const exp = results.map((r) => r.metrics.expanded);
   const max = Math.max(...exp), min = Math.min(...exp);
@@ -191,20 +250,29 @@ function showResults() {
   showStep();
 }
 
+/**
+ * @param {boolean} on Enable or disable the solution player controls.
+ */
 function setPlayer(on) {
   for (const id of ["prev", "play", "next", "scrub"]) $(id).disabled = !on;
   if (!on) $("step-label").textContent = "0 / 0";
 }
+/** Render `results[k].path[step]` on every column board and update the scrubber. */
 function showStep() {
   const cost = results[0].metrics.cost;
   document.querySelectorAll(".col .board").forEach((el, k) => renderBoard(el, results[k].path[step]));
   $("scrub").value = step;
   $("step-label").textContent = `${step} / ${cost}`;
 }
+/**
+ * Jump to a solution step, clamped to [0, cost].
+ * @param {number} n Step index.
+ */
 function go(n) {
   step = Math.max(0, Math.min(results[0].metrics.cost, n));
   showStep();
 }
+/** Stop playback and reset the play button. */
 function stop() {
   clearInterval(timer);
   timer = null;
@@ -232,6 +300,10 @@ $("verdict").textContent = "Escolha um estado e resolva com as três heurística
 // ---------- experiment ----------
 let experiment = null, chart = null;
 
+/**
+ * Fetch the precomputed experiment once and render verdict, table and chart.
+ * @returns {Promise<void>}
+ */
 async function loadExperiment() {
   if (experiment) return;
   const r = await fetch("/api/experiment");
@@ -253,6 +325,7 @@ async function loadExperiment() {
     `d = 2, 4 e 6 têm só 4, 16 e 39 estados no espaço inteiro. b* calculado com N = nós gerados (convenção AIMA).`;
 }
 
+/** Render the per-depth table of mean expanded nodes and b*. */
 function renderTable() {
   const sw = (h) => `<th><i class="swatch" style="--color:var(--${h.id})"></i>${h.id}</th>`;
   const swSep = (h, i) => sw(h).replace("<th>", i === 0 ? '<th class="sep">' : "<th>");
@@ -268,9 +341,10 @@ function renderTable() {
     </tr>`).join("")}</tbody>`;
 }
 
-// direct labels at each line's end (identity is never color-only)
+/** Chart.js plugin: direct label at each line's end, so identity is never color-only. */
 const endLabels = {
   id: "endLabels",
+  /** @param {Chart} c Chart instance. */
   afterDatasetsDraw(c) {
     const ctx = c.ctx;
     ctx.save();
@@ -285,6 +359,7 @@ const endLabels = {
   },
 };
 
+/** (Re)draw the log-scale expanded-nodes chart with the current theme colors. */
 function renderChart() {
   const rows = experiment.rows, text2 = css("--text-2"), line = css("--line");
   Chart.defaults.font.family = css("--sans");

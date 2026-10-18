@@ -6,16 +6,38 @@ _TARGET = {tile: divmod(i, 3) for i, tile in enumerate(GOAL)}
 
 
 def h0(s):
+    """Null heuristic; A* with h0 is Dijkstra/UCS.
+
+    Args:
+        s: State.
+
+    Returns:
+        Always 0.
+    """
     return 0
 
 
 def h1(s):
-    """Misplaced tiles."""
+    """Count misplaced tiles, excluding the blank.
+
+    Args:
+        s: State.
+
+    Returns:
+        Number of tiles 1..8 not at their GOAL position.
+    """
     return sum(1 for x, g in zip(s, GOAL) if x and x != g)
 
 
 def h2(s):
-    """Sum of Manhattan distances."""
+    """Sum the Manhattan distances of each tile to its goal, excluding the blank.
+
+    Args:
+        s: State.
+
+    Returns:
+        Sum over tiles 1..8 of |row - goal_row| + |col - goal_col|.
+    """
     total = 0
     for i, x in enumerate(s):
         if x:

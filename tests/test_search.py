@@ -1,3 +1,5 @@
+"""A*: optimal cost equal across heuristics, valid paths, admissibility, expansion order; b*."""
+
 import random
 from statistics import mean
 

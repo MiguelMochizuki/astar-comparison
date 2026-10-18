@@ -10,12 +10,39 @@ from core.puzzle import GOAL, neighbors
 
 @dataclass
 class Result:
+    """Outcome of an A* run.
+
+    Attributes:
+        path: States from start to goal, inclusive.
+        moves: Blank moves (U/D/L/R), len(path) - 1 of them.
+        metrics: Dict with expanded, generated, max_frontier, time_ms, cost.
+    """
+
     path: list
     moves: list
     metrics: dict
 
 
 def astar(start, h, goal=GOAL):
+    """Run graph-search A* with lazy deletion and no reopening.
+
+    The heap key is (f, -g, counter): ties go to the deeper node, then FIFO.
+    Metrics are counted the same way for every heuristic: stale heap entries
+    are not expanded; the goal pop counts as expanded but generates nothing;
+    generated counts successors pushed onto the heap.
+
+    Args:
+        start: Initial state.
+        h: Heuristic, state -> int. Must be consistent for optimality
+            without reopening.
+        goal: Goal state.
+
+    Returns:
+        Result with the optimal path, its moves and the search metrics.
+
+    Raises:
+        ValueError: If the frontier empties without reaching goal.
+    """
     t0 = time.perf_counter()
     tie = itertools.count()
     # key (f, -g, counter): ties go to deeper nodes, then FIFO

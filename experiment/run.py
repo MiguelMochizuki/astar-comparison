@@ -23,6 +23,15 @@ OUT = Path(__file__).resolve().parent.parent / "results"
 
 
 def random_walk(rng, steps):
+    """Walk randomly from GOAL without undoing the previous move.
+
+    Args:
+        rng: random.Random instance (seeded for reproducibility).
+        steps: Number of moves.
+
+    Returns:
+        A solvable state at most steps moves from GOAL.
+    """
     s, prev = GOAL, None
     for _ in range(steps):
         options = [t for _, t in neighbors(s) if t != prev]
@@ -31,6 +40,14 @@ def random_walk(rng, steps):
 
 
 def random_solvable(rng):
+    """Draw random permutations until one is solvable.
+
+    Args:
+        rng: random.Random instance.
+
+    Returns:
+        A uniformly random solvable state.
+    """
     while True:
         s = tuple(rng.sample(range(9), 9))
         if is_solvable(s):
@@ -38,6 +55,21 @@ def random_solvable(rng):
 
 
 def generate(rng, per_bucket, attempts_per_bucket):
+    """Build instance buckets keyed by optimal depth.
+
+    Shallow buckets (d <= SHALLOW_MAX) are fed by random walks, deeper ones
+    by random permutations. Depth is measured with A* + h2; every candidate
+    goes to the bucket of its real depth, whichever bucket is being filled.
+
+    Args:
+        rng: random.Random instance.
+        per_bucket: Target instances per depth.
+        attempts_per_bucket: Candidate cap per target depth.
+
+    Returns:
+        Dict depth -> list of distinct states. Buckets may be short when the
+        state space has fewer states at that depth (d = 2, 4, 6).
+    """
     buckets = {d: [] for d in DEPTHS}
     seen = set()
     for d in DEPTHS:
@@ -55,6 +87,22 @@ def generate(rng, per_bucket, attempts_per_bucket):
 
 
 def run(per_bucket, h0_per_bucket, seed, attempts_per_bucket):
+    """Generate instances and run A* with every heuristic on them.
+
+    Args:
+        per_bucket: Target instances per depth.
+        h0_per_bucket: Cap for h0 per depth (h0 is the slow one).
+        seed: RNG seed.
+        attempts_per_bucket: Candidate cap per target depth.
+
+    Returns:
+        Dict with "meta" (parameters) and "rows" (one per depth, each metric
+        averaged per heuristic).
+
+    Raises:
+        AssertionError: If any heuristic returns a cost different from the
+            bucket depth.
+    """
     rng = random.Random(seed)
     buckets = generate(rng, per_bucket, attempts_per_bucket)
     rows = []
@@ -86,6 +134,11 @@ def run(per_bucket, h0_per_bucket, seed, attempts_per_bucket):
 
 
 def write(result):
+    """Write results/experiment.json and results/experiment.csv.
+
+    Args:
+        result: Output of run().
+    """
     OUT.mkdir(exist_ok=True)
     (OUT / "experiment.json").write_text(json.dumps(result, indent=1))
     with open(OUT / "experiment.csv", "w", newline="") as f:

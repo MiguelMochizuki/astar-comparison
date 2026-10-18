@@ -2,6 +2,17 @@
 
 
 def effective_branching(n, d, tol=1e-9):
+    """Solve N + 1 = sum_{i=0..d} b^i for b by bisection on [1, N].
+
+    Args:
+        n: Nodes generated (AIMA convention).
+        d: Solution depth.
+        tol: Bisection stopping width.
+
+    Returns:
+        b* as a float, 1.0 if n + 1 <= d + 1, or None when d == 0
+        (undefined).
+    """
     if d == 0:
         return None
 

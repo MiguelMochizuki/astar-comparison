@@ -1,3 +1,5 @@
+"""Puzzle moves, solvability and heuristic properties (h1/h2 zero at goal, h2 >= h1)."""
+
 import random
 
 from core.heuristics import h1, h2
